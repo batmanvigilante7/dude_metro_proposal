@@ -3,8 +3,15 @@ import { useEffect, useRef } from "react";
 
 // --- State ---
 export const currentPageAtom = atom(0);
-export const pageCountAtom = atom(5); // number of interior sheets
-export const photosAtom = atom([]); // array of blob URLs
+export const pageCountAtom = atom(9); // 9 interior sheets → 9×2 + 2 = 20 photo slots
+
+// Pre-seed with the 20 downloaded images (page-01.webp … page-20.webp).
+// These live in /public/images/ and are served as static assets.
+const PRELOADED_PHOTOS = Array.from(
+  { length: 20 },
+  (_, i) => `/images/page-${String(i + 1).padStart(2, "0")}.webp`
+);
+export const photosAtom = atom(PRELOADED_PHOTOS);
 
 // Build the sheets array from interior count + uploaded photos
 export function buildPages(interiorCount, photos) {
@@ -89,7 +96,7 @@ export const UI = () => {
             </span>
             <button
               className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/20 hover:bg-white/40 text-white text-sm font-bold flex items-center justify-center transition"
-              onClick={() => setPageCount((c) => Math.min(15, c + 1))}
+              onClick={() => setPageCount((c) => Math.min(20, c + 1))}
             >
               +
             </button>

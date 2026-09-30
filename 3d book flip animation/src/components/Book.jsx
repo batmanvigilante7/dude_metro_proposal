@@ -165,7 +165,24 @@ const Page = ({
     const mat = skinnedMeshRef.current.material[4];
 
     if (frontPhoto && !isFrontCover) {
-      const tex = textureLoader.load(frontPhoto);
+      const tex = textureLoader.load(frontPhoto, (loadedTex) => {
+        // Cover-fit: scale so the image fills the page face,
+        // preserving aspect ratio and cropping the minor excess.
+        const imgAspect = loadedTex.image.width / loadedTex.image.height;
+        const pageAspect = PAGE_WIDTH / PAGE_HEIGHT;
+        if (imgAspect > pageAspect) {
+          // Image wider than page → fit height, crop sides
+          const rx = pageAspect / imgAspect;
+          loadedTex.repeat.set(rx, 1);
+          loadedTex.offset.set((1 - rx) / 2, 0);
+        } else {
+          // Image taller than page → fit width, crop top/bottom
+          const ry = imgAspect / pageAspect;
+          loadedTex.repeat.set(1, ry);
+          loadedTex.offset.set(0, (1 - ry) / 2);
+        }
+        mat.needsUpdate = true;
+      });
       tex.colorSpace = SRGBColorSpace;
       mat.map = tex;
       mat.color = whiteColor.clone();
@@ -191,7 +208,21 @@ const Page = ({
     const mat = skinnedMeshRef.current.material[5];
 
     if (backPhoto && !isBackCover) {
-      const tex = textureLoader.load(backPhoto);
+      const tex = textureLoader.load(backPhoto, (loadedTex) => {
+        // Cover-fit: same logic as front face
+        const imgAspect = loadedTex.image.width / loadedTex.image.height;
+        const pageAspect = PAGE_WIDTH / PAGE_HEIGHT;
+        if (imgAspect > pageAspect) {
+          const rx = pageAspect / imgAspect;
+          loadedTex.repeat.set(rx, 1);
+          loadedTex.offset.set((1 - rx) / 2, 0);
+        } else {
+          const ry = imgAspect / pageAspect;
+          loadedTex.repeat.set(1, ry);
+          loadedTex.offset.set(0, (1 - ry) / 2);
+        }
+        mat.needsUpdate = true;
+      });
       tex.colorSpace = SRGBColorSpace;
       mat.map = tex;
       mat.color = whiteColor.clone();
