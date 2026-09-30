@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@mawtech/glass-ui": "^0.2.2"
+  }
+}

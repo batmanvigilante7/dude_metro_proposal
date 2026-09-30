@@ -1,0 +1,28 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@100..900&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh; /* dynamic viewport height for mobile browsers */
+  background: radial-gradient(#5a47ce, #232323 80%);
+  overflow: hidden;
+  touch-action: none; /* prevent browser gestures from interfering with 3D controls */
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none; /* prevent pull-to-refresh and overscroll bounce */
+  -webkit-tap-highlight-color: transparent; /* remove tap highlight on mobile */
+}
+
+html {
+  overflow: hidden;
+}
+
+.outline-text {
+  -webkit-text-stroke: 1px white;
+}
