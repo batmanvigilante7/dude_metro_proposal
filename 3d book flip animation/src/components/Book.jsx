@@ -8,17 +8,21 @@ import {
   BoxGeometry,
   Color,
   Float32BufferAttribute,
+  FrontSide,
   MathUtils,
   MeshStandardMaterial,
   Skeleton,
   SkinnedMesh,
-  SRGBColorSpace,
-  TextureLoader,
   Uint16BufferAttribute,
   Vector3,
 } from "three";
 import { degToRad } from "three/src/math/MathUtils.js";
 import { currentPageAtom, pageCountAtom, photosAtom, buildPages } from "./UI";
+import {
+  getWebPTexture,
+  pruneTextureCache,
+  updateNativePrefetch,
+} from "../utils/textureManager";
 
 // ── Constants ──────────────────────────────────────────────
 const easingFactor = 0.5;
@@ -80,21 +84,18 @@ const coverColor = new Color("#3d2b1f"); // dark leather brown
 
 // ── Edge materials (shared across instances) ───────────────
 const pageEdgeMaterials = [
-  new MeshStandardMaterial({ color: whiteColor }),
-  new MeshStandardMaterial({ color: "#111" }),
-  new MeshStandardMaterial({ color: whiteColor }),
-  new MeshStandardMaterial({ color: whiteColor }),
+  new MeshStandardMaterial({ color: whiteColor, depthWrite: true }),
+  new MeshStandardMaterial({ color: "#111", depthWrite: true }),
+  new MeshStandardMaterial({ color: whiteColor, depthWrite: true }),
+  new MeshStandardMaterial({ color: whiteColor, depthWrite: true }),
 ];
 
 const coverEdgeMaterials = [
-  new MeshStandardMaterial({ color: coverColor, roughness: 0.6 }),
-  new MeshStandardMaterial({ color: coverColor, roughness: 0.6 }),
-  new MeshStandardMaterial({ color: coverColor, roughness: 0.6 }),
-  new MeshStandardMaterial({ color: coverColor, roughness: 0.6 }),
+  new MeshStandardMaterial({ color: coverColor, roughness: 0.6, depthWrite: true }),
+  new MeshStandardMaterial({ color: coverColor, roughness: 0.6, depthWrite: true }),
+  new MeshStandardMaterial({ color: coverColor, roughness: 0.6, depthWrite: true }),
+  new MeshStandardMaterial({ color: coverColor, roughness: 0.6, depthWrite: true }),
 ];
-
-// ── Texture loader singleton ───────────────────────────────
-const textureLoader = new TextureLoader();
 
 // ── Page component ─────────────────────────────────────────
 const Page = ({
@@ -116,7 +117,38 @@ const Page = ({
   const lastOpened = useRef(opened);
   const skinnedMeshRef = useRef();
 
-  // Build the skinned mesh
+  // State to track if this sheet is actively turning in the animation
+  const [isTurning, setIsTurning] = useState(false);
+
+  // ── Determine Strict Page Isolation & Active Faces ─────────
+  // Enforce 'one page, one active image' model:
+  // - Left visible sheet is (page - 1): only its BACK face is active.
+  // - Right visible sheet is (page): only its FRONT face is active.
+  // - Turning sheet: both faces are active during the mid-turn flight.
+  // - Previous pages (number < page - 1) and deep unturned pages:
+  //   strictly unmount/clear textures (map = null) and hide mesh.
+  const isLeftTop = number === page - 1;
+  const isRightTop = number === page;
+  const isLeftBuffer = number === page - 2;
+  const isRightBuffer = number === page + 1;
+
+  // Active face requirements:
+  const isFrontActive =
+    isRightTop || (isTurning && (isLeftTop || isRightTop));
+  const isBackActive =
+    isLeftTop || (isTurning && (isLeftTop || isRightTop));
+
+  // Whole sheet visibility:
+  // Sheet 0 and last sheet are book exterior covers (kept visible for cover textures).
+  // Interior sheets are ONLY visible if they are top facing or actively turning / immediate buffer.
+  const isSheetVisible =
+    isFrontCover ||
+    isBackCover ||
+    isLeftTop ||
+    isRightTop ||
+    (isTurning && (isLeftBuffer || isRightBuffer));
+
+  // Build the skinned mesh with hardware-accelerated backface culling & polygon offset
   const manualSkinnedMesh = useMemo(() => {
     const bones = [];
     for (let i = 0; i <= PAGE_SEGMENTS; i++) {
@@ -133,19 +165,31 @@ const Page = ({
 
     const materials = [
       ...edges,
-      // material[4] — front face
+      // material[4] — front face (Strictly FrontSide to eliminate backface bleed)
       new MeshStandardMaterial({
         color: isFrontCover ? coverColor : whiteColor,
         roughness: isCover ? 0.6 : 0.1,
         emissive: emissiveColor,
         emissiveIntensity: 0,
+        side: FrontSide,
+        depthWrite: true,
+        depthTest: true,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
       }),
-      // material[5] — back face
+      // material[5] — back face (Strictly FrontSide to eliminate backface bleed)
       new MeshStandardMaterial({
         color: isBackCover ? coverColor : whiteColor,
         roughness: isCover ? 0.6 : 0.1,
         emissive: emissiveColor,
         emissiveIntensity: 0,
+        side: FrontSide,
+        depthWrite: true,
+        depthTest: true,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
       }),
     ];
 
@@ -159,94 +203,88 @@ const Page = ({
     return mesh;
   }, [isCover, isFrontCover, isBackCover]);
 
-  // ── Apply / remove front photo texture ───────────────────
+  // ── Apply / remove front photo texture with async WebP loading ──
   useEffect(() => {
     if (!skinnedMeshRef.current) return;
     const mat = skinnedMeshRef.current.material[4];
+    let active = true;
 
-    if (frontPhoto && !isFrontCover) {
-      const tex = textureLoader.load(frontPhoto, (loadedTex) => {
-        // Cover-fit: scale so the image fills the page face,
-        // preserving aspect ratio and cropping the minor excess.
-        const imgAspect = loadedTex.image.width / loadedTex.image.height;
-        const pageAspect = PAGE_WIDTH / PAGE_HEIGHT;
-        if (imgAspect > pageAspect) {
-          // Image wider than page → fit height, crop sides
-          const rx = pageAspect / imgAspect;
-          loadedTex.repeat.set(rx, 1);
-          loadedTex.offset.set((1 - rx) / 2, 0);
-        } else {
-          // Image taller than page → fit width, crop top/bottom
-          const ry = imgAspect / pageAspect;
-          loadedTex.repeat.set(1, ry);
-          loadedTex.offset.set(0, (1 - ry) / 2);
+    if (isFrontActive && frontPhoto && !isFrontCover) {
+      getWebPTexture(frontPhoto, PAGE_WIDTH, PAGE_HEIGHT).then((tex) => {
+        if (!active || !skinnedMeshRef.current) return;
+        if (tex) {
+          mat.map = tex;
+          mat.color.set(whiteColor);
+          mat.visible = true;
+          mat.needsUpdate = true;
         }
-        mat.needsUpdate = true;
       });
-      tex.colorSpace = SRGBColorSpace;
-      mat.map = tex;
-      mat.color = whiteColor.clone();
-      mat.needsUpdate = true;
-      return () => {
-        tex.dispose();
-        mat.map = null;
-        mat.needsUpdate = true;
-      };
     } else {
-      if (mat.map) {
-        mat.map.dispose();
-        mat.map = null;
-      }
-      mat.color = isFrontCover ? coverColor.clone() : whiteColor.clone();
+      // Immediately clear texture and reset state once turned or inactive
+      mat.map = null;
+      mat.color.set(isFrontCover ? coverColor : whiteColor);
+      // For interior sheets, hide front material if facing stack to prevent internal bleed
+      mat.visible = isFrontCover || isFrontActive;
       mat.needsUpdate = true;
     }
-  }, [frontPhoto, isFrontCover]);
 
-  // ── Apply / remove back photo texture ────────────────────
+    return () => {
+      active = false;
+    };
+  }, [frontPhoto, isFrontCover, isFrontActive]);
+
+  // ── Apply / remove back photo texture with async WebP loading ──
   useEffect(() => {
     if (!skinnedMeshRef.current) return;
     const mat = skinnedMeshRef.current.material[5];
+    let active = true;
 
-    if (backPhoto && !isBackCover) {
-      const tex = textureLoader.load(backPhoto, (loadedTex) => {
-        // Cover-fit: same logic as front face
-        const imgAspect = loadedTex.image.width / loadedTex.image.height;
-        const pageAspect = PAGE_WIDTH / PAGE_HEIGHT;
-        if (imgAspect > pageAspect) {
-          const rx = pageAspect / imgAspect;
-          loadedTex.repeat.set(rx, 1);
-          loadedTex.offset.set((1 - rx) / 2, 0);
-        } else {
-          const ry = imgAspect / pageAspect;
-          loadedTex.repeat.set(1, ry);
-          loadedTex.offset.set(0, (1 - ry) / 2);
+    if (isBackActive && backPhoto && !isBackCover) {
+      getWebPTexture(backPhoto, PAGE_WIDTH, PAGE_HEIGHT).then((tex) => {
+        if (!active || !skinnedMeshRef.current) return;
+        if (tex) {
+          mat.map = tex;
+          mat.color.set(whiteColor);
+          mat.visible = true;
+          mat.needsUpdate = true;
         }
-        mat.needsUpdate = true;
       });
-      tex.colorSpace = SRGBColorSpace;
-      mat.map = tex;
-      mat.color = whiteColor.clone();
-      mat.needsUpdate = true;
-      return () => {
-        tex.dispose();
-        mat.map = null;
-        mat.needsUpdate = true;
-      };
     } else {
-      if (mat.map) {
-        mat.map.dispose();
-        mat.map = null;
-      }
-      mat.color = isBackCover ? coverColor.clone() : whiteColor.clone();
+      // Immediately clear texture and reset state once turned or inactive
+      mat.map = null;
+      mat.color.set(isBackCover ? coverColor : whiteColor);
+      // For interior sheets, hide back material if facing stack to prevent internal bleed
+      mat.visible = isBackCover || isBackActive;
       mat.needsUpdate = true;
     }
-  }, [backPhoto, isBackCover]);
 
-  // ── Per-frame animation ──────────────────────────────────
+    return () => {
+      active = false;
+    };
+  }, [backPhoto, isBackCover, isBackActive]);
+
+  // ── Per-frame animation & Stacking Context ────────────────
   useFrame((_, delta) => {
-    if (!skinnedMeshRef.current) return;
+    if (!skinnedMeshRef.current || !group.current) return;
 
-    // Highlight glow
+    // Strict Page Isolation: hide group completely if buried deep in stack
+    group.current.visible = isSheetVisible;
+    if (!isSheetVisible) {
+      return;
+    }
+
+    // Dynamic Render Order to eliminate Z-fighting & ghosting
+    let order = 1;
+    if (isTurning) {
+      order = 30; // Turning page is strictly on top of all sheets
+    } else if (isLeftTop || isRightTop) {
+      order = 20; // Active top visible leaves
+    } else if (isLeftBuffer || isRightBuffer) {
+      order = 10; // Buffer underneath active
+    }
+    skinnedMeshRef.current.renderOrder = order;
+
+    // Highlight glow on active interactive sheet
     const emissiveIntensity = highlighted ? 0.22 : 0;
     skinnedMeshRef.current.material[4].emissiveIntensity =
       skinnedMeshRef.current.material[5].emissiveIntensity = MathUtils.lerp(
@@ -255,12 +293,20 @@ const Page = ({
         0.1
       );
 
+    // Track turn transition
     if (lastOpened.current !== opened) {
       turnedAt.current = +new Date();
       lastOpened.current = opened;
+      setIsTurning(true);
     }
-    let turningTime = Math.min(400, new Date() - turnedAt.current) / 400;
-    turningTime = Math.sin(turningTime * Math.PI);
+
+    const elapsed = new Date() - turnedAt.current;
+    if (isTurning && elapsed >= 450) {
+      setIsTurning(false);
+    }
+
+    let turningProgress = Math.min(400, elapsed) / 400;
+    const turningIntensityCurve = Math.sin(turningProgress * Math.PI);
 
     let targetRotation = opened ? -Math.PI / 2 : Math.PI / 2;
     if (!bookClosed) {
@@ -273,7 +319,7 @@ const Page = ({
       const insideCurveIntensity = i < 8 ? Math.sin(i * 0.2 + 0.25) : 0;
       const outsideCurveIntensity = i >= 8 ? Math.cos(i * 0.3 + 0.09) : 0;
       const turningIntensity =
-        Math.sin(i * Math.PI * (1 / bones.length)) * turningTime;
+        Math.sin(i * Math.PI * (1 / bones.length)) * turningIntensityCurve;
 
       let rotationAngle =
         insideCurveStrength * insideCurveIntensity * targetRotation -
@@ -295,7 +341,7 @@ const Page = ({
 
       const foldIntensity =
         i > 8
-          ? Math.sin(i * Math.PI * (1 / bones.length) - 0.5) * turningTime
+          ? Math.sin(i * Math.PI * (1 / bones.length) - 0.5) * turningIntensityCurve
           : 0;
       easing.dampAngle(
         target.rotation,
@@ -310,13 +356,14 @@ const Page = ({
   // ── Interaction ──────────────────────────────────────────
   const [, setPage] = useAtom(currentPageAtom);
   const [highlighted, setHighlighted] = useState(false);
-  useCursor(highlighted);
+  useCursor(highlighted && isSheetVisible);
 
   return (
     <group
       {...props}
       ref={group}
       onPointerEnter={(e) => {
+        if (!isSheetVisible) return;
         e.stopPropagation();
         setHighlighted(true);
       }}
@@ -325,6 +372,7 @@ const Page = ({
         setHighlighted(false);
       }}
       onClick={(e) => {
+        if (!isSheetVisible) return;
         e.stopPropagation();
         setPage(opened ? number : number + 1);
         setHighlighted(false);
@@ -351,6 +399,32 @@ export const Book = ({ ...props }) => {
     [pageCount, photos]
   );
 
+  // ── Cache Window & Native Prefetch Management ───────────
+  // Aggressively prunes textures outside the active ±2 window
+  // and natively prefetches adjacent WebP images via <link rel="prefetch">
+  useEffect(() => {
+    const minWin = Math.max(0, Math.min(page, delayedPage) - 2);
+    const maxWin = Math.min(allPages.length - 1, Math.max(page, delayedPage) + 2);
+
+    const activeUrls = [];
+    for (let i = minWin; i <= maxWin; i++) {
+      if (allPages[i]?.front) activeUrls.push(allPages[i].front);
+      if (allPages[i]?.back) activeUrls.push(allPages[i].back);
+    }
+
+    const prefetchMin = Math.max(0, page - 2);
+    const prefetchMax = Math.min(allPages.length - 1, page + 4);
+    const prefetchUrls = [];
+    for (let i = prefetchMin; i <= prefetchMax; i++) {
+      if (allPages[i]?.front) prefetchUrls.push(allPages[i].front);
+      if (allPages[i]?.back) prefetchUrls.push(allPages[i].back);
+    }
+
+    updateNativePrefetch(prefetchUrls);
+    pruneTextureCache(activeUrls);
+  }, [page, delayedPage, allPages]);
+
+  // Page turning stepper
   useEffect(() => {
     let timeout;
     const goToPage = () => {

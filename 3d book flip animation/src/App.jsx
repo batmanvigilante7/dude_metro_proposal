@@ -17,11 +17,13 @@ function App() {
   }, [handleResize]);
 
   return (
-    <>
+    <div className="flipbook-container w-full h-full relative">
       <UI />
       <Loader />
       <Canvas
         shadows
+        className="flipbook-container"
+        gl={{ alpha: true, antialias: true }}
         camera={{
           position: isMobile ? [-0.5, 1.5, 7] : [-0.5, 1, 4],
           fov: isMobile ? 50 : 45,
@@ -33,7 +35,7 @@ function App() {
           </Suspense>
         </group>
       </Canvas>
-    </>
+    </div>
   );
 }
 
