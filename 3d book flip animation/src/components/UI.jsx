@@ -3,27 +3,14 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import SpecularButton from "./SpecularButton";
 
 // --- State ---
-// All 44 images in public/images: 20 book pages and 24 animation frames
-export const PRELOADED_PHOTOS = [
-  ...Array.from(
-    { length: 20 },
-    (_, i) => `${import.meta.env.BASE_URL}images/page-${String(i + 1).padStart(2, "0")}.webp`
-  ),
-  ...Array.from(
-    { length: 24 },
-    (_, i) => `${import.meta.env.BASE_URL}images/frame_${String(i + 1).padStart(3, "0")}.webp`
-  ),
-];
-
-// Required interior sheets for 44 photo slots:
-// 1 inside front cover + (21 interior sheets * 2) + 1 inside back cover = 44 photo slots!
-export const INITIAL_PAGE_COUNT = Math.max(
-  1,
-  Math.ceil((PRELOADED_PHOTOS.length - 2) / 2)
-); // 21 interior sheets
-
 export const currentPageAtom = atom(0);
-export const pageCountAtom = atom(INITIAL_PAGE_COUNT);
+export const pageCountAtom = atom(9); // 9 interior sheets → 9×2 + 2 = 20 photo slots
+
+// Pre-seed with the 20 downloaded images (page-01.webp … page-20.webp).
+const PRELOADED_PHOTOS = Array.from(
+  { length: 20 },
+  (_, i) => `${import.meta.env.BASE_URL}images/page-${String(i + 1).padStart(2, "0")}.webp`
+);
 export const photosAtom = atom(PRELOADED_PHOTOS);
 
 // Build the sheets array from interior count + uploaded photos
@@ -345,7 +332,7 @@ export const UI = () => {
               </span>
               <button
                 className="w-6 h-6 sm:w-7 sm:h-7 rounded-full apple-glass border border-white/20 text-white font-semibold text-xs sm:text-sm flex items-center justify-center hover:bg-white/25 active:scale-95 transition-all"
-                onClick={() => setPageCount((c) => Math.min(50, c + 1))}
+                onClick={() => setPageCount((c) => Math.min(20, c + 1))}
                 title="Increase pages"
               >
                 +
@@ -411,7 +398,7 @@ export const UI = () => {
             </span>
             <button
               className="w-5 h-5 rounded-full apple-glass border border-white/20 text-white font-semibold text-xs flex items-center justify-center active:scale-90"
-              onClick={() => setPageCount((c) => Math.min(50, c + 1))}
+              onClick={() => setPageCount((c) => Math.min(20, c + 1))}
               title="Increase pages"
             >
               +

@@ -1,11 +1,19 @@
 import { Loader } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
+import { useAtom } from "jotai";
 import { Experience } from "./components/Experience";
-import { UI } from "./components/UI";
+import { UI, photosAtom } from "./components/UI";
 import DriftWall from "./components/DriftWall";
 
+// Original photos used inside the book (page-01.webp … page-20.webp)
+const ORIGINAL_BOOK_PHOTOS = Array.from(
+  { length: 20 },
+  (_, i) => `${import.meta.env.BASE_URL}images/page-${String(i + 1).padStart(2, "0")}.webp`
+);
+
 function App() {
+  const [photos] = useAtom(photosAtom);
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" &&
       (window.innerWidth <= 800 || window.innerHeight > window.innerWidth)
@@ -26,30 +34,14 @@ function App() {
     };
   }, [handleResize]);
 
-  // Outer two sections of depth wall: page-01 to page-20
-  const pageTiles = useMemo(
-    () =>
-      Array.from({ length: 20 }, (_, i) => ({
-        image: `${import.meta.env.BASE_URL}images/page-${String(i + 1).padStart(2, "0")}.webp`,
-        title: `Page ${i + 1}`,
-      })),
-    []
+  const activePhotos = useMemo(
+    () => (photos && photos.length > 0 ? photos : ORIGINAL_BOOK_PHOTOS),
+    [photos]
   );
 
-  // Inner two sections of depth wall: frame_001 to frame_024
-  const frameTiles = useMemo(
-    () =>
-      Array.from({ length: 24 }, (_, i) => ({
-        image: `${import.meta.env.BASE_URL}images/frame_${String(i + 1).padStart(3, "0")}.webp`,
-        title: `Frame ${i + 1}`,
-      })),
-    []
-  );
-
-  // Depth wall 4 sections: Outer Left, Inner Left, Inner Right, Outer Right
-  const depthWallSections = useMemo(
-    () => [pageTiles, frameTiles, frameTiles, pageTiles],
-    [pageTiles, frameTiles]
+  const driftItems = useMemo(
+    () => activePhotos.map((src, i) => ({ image: src, title: `Page ${i + 1}` })),
+    [activePhotos]
   );
 
   return (
@@ -66,10 +58,10 @@ function App() {
         }}
       >
         <DriftWall
-          sections={depthWallSections}
-          columns={4}
-          tileWidth={isMobile ? 100 : 160}
-          tileHeight={isMobile ? 135 : 215}
+          items={driftItems}
+          columns={isMobile ? 3 : 5}
+          tileWidth={isMobile ? 105 : 155}
+          tileHeight={isMobile ? 140 : 205}
           gap={isMobile ? 10 : 18}
           radius={12}
           tilt={12}

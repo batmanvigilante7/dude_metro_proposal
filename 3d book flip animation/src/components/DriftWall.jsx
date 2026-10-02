@@ -20,7 +20,6 @@ const columnFactor = (index, variance) => {
 
 const DriftWall = ({
   items = DEFAULT_ITEMS,
-  sections,
   columns = 5,
   tileWidth = 200,
   tileHeight = 132,
@@ -71,13 +70,10 @@ const DriftWall = ({
   }, []);
 
   const columnItems = useMemo(() => {
-    if (sections && Array.isArray(sections) && sections.length > 0) {
-      return sections.map(col => (col && col.length ? col : items.slice(0, 1)));
-    }
     const cols = Array.from({ length: columns }, () => []);
     items.forEach((item, i) => cols[i % columns].push(item));
     return cols.map(col => (col.length ? col : items.slice(0, 1)));
-  }, [items, sections, columns]);
+  }, [items, columns]);
 
   const columnMeta = useMemo(() => {
     const unit = tileHeight + gap;

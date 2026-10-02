@@ -294,8 +294,7 @@ const Page = ({
 
     let targetRotation = opened ? -Math.PI / 2 : Math.PI / 2;
     if (!bookClosed) {
-      const fanStep = Math.min(0.8, 8 / Math.max(1, totalPages - 1));
-      targetRotation += degToRad(number * fanStep);
+      targetRotation += degToRad(number * 0.8);
     }
 
     const bones = skinnedMeshRef.current.skeleton.bones;
