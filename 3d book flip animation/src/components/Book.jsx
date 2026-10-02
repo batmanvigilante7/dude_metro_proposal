@@ -96,7 +96,7 @@ const backCoverGeometry = createBookGeometry(
 // ── Colours ────────────────────────────────────────────────
 const whiteColor = new Color("white");
 const emissiveColor = new Color("orange");
-const coverColor = new Color("#3d2b1f"); // dark leather brown
+const coverColor = new Color("#11141e"); // midnight obsidian hardcover
 
 // ── Edge materials (shared across instances) ───────────────
 const pageEdgeMaterials = [
@@ -107,10 +107,10 @@ const pageEdgeMaterials = [
 ];
 
 const coverEdgeMaterials = [
-  new MeshStandardMaterial({ color: coverColor, roughness: 0.6, depthWrite: true }),
-  new MeshStandardMaterial({ color: coverColor, roughness: 0.6, depthWrite: true }),
-  new MeshStandardMaterial({ color: coverColor, roughness: 0.6, depthWrite: true }),
-  new MeshStandardMaterial({ color: coverColor, roughness: 0.6, depthWrite: true }),
+  new MeshStandardMaterial({ color: coverColor, roughness: 0.45, metalness: 0.15, depthWrite: true }),
+  new MeshStandardMaterial({ color: coverColor, roughness: 0.45, metalness: 0.15, depthWrite: true }),
+  new MeshStandardMaterial({ color: coverColor, roughness: 0.45, metalness: 0.15, depthWrite: true }),
+  new MeshStandardMaterial({ color: coverColor, roughness: 0.45, metalness: 0.15, depthWrite: true }),
 ];
 
 // ── Page component ─────────────────────────────────────────
@@ -161,8 +161,9 @@ const Page = ({
       ...edges,
       // material[4] — front face (Strictly FrontSide to eliminate backface bleed)
       new MeshStandardMaterial({
-        color: isFrontCover ? coverColor : whiteColor,
-        roughness: isFrontCover ? 0.6 : 0.1,
+        color: isFrontCover && !frontPhoto ? coverColor : whiteColor,
+        roughness: isFrontCover ? 0.35 : 0.1,
+        metalness: isFrontCover ? 0.08 : 0,
         emissive: emissiveColor,
         emissiveIntensity: 0,
         side: FrontSide,
@@ -174,8 +175,9 @@ const Page = ({
       }),
       // material[5] — back face (Strictly FrontSide to eliminate backface bleed)
       new MeshStandardMaterial({
-        color: isBackCover ? coverColor : whiteColor,
-        roughness: isBackCover ? 0.6 : 0.1,
+        color: isBackCover && !backPhoto ? coverColor : whiteColor,
+        roughness: isBackCover ? 0.35 : 0.1,
+        metalness: isBackCover ? 0.08 : 0,
         emissive: emissiveColor,
         emissiveIntensity: 0,
         side: FrontSide,
@@ -199,7 +201,7 @@ const Page = ({
     mesh.add(skeleton.bones[0]);
     mesh.bind(skeleton);
     return mesh;
-  }, [isCover, isFrontCover, isBackCover]);
+  }, [isCover, isFrontCover, isBackCover, frontPhoto, backPhoto]);
 
   // ── Apply / remove front photo texture ──────────────────────
   useEffect(() => {
@@ -207,12 +209,14 @@ const Page = ({
     const mat = skinnedMeshRef.current.material[4];
     let active = true;
 
-    if (frontPhoto && !isFrontCover) {
+    if (frontPhoto) {
       getWebPTexture(frontPhoto, PAGE_WIDTH, PAGE_HEIGHT).then((tex) => {
         if (!active || !skinnedMeshRef.current) return;
         if (tex) {
           mat.map = tex;
           mat.color.set(whiteColor);
+          mat.roughness = isFrontCover ? 0.35 : 0.1;
+          mat.metalness = isFrontCover ? 0.08 : 0;
           mat.needsUpdate = true;
         }
       });
@@ -233,12 +237,14 @@ const Page = ({
     const mat = skinnedMeshRef.current.material[5];
     let active = true;
 
-    if (backPhoto && !isBackCover) {
+    if (backPhoto) {
       getWebPTexture(backPhoto, PAGE_WIDTH, PAGE_HEIGHT).then((tex) => {
         if (!active || !skinnedMeshRef.current) return;
         if (tex) {
           mat.map = tex;
           mat.color.set(whiteColor);
+          mat.roughness = isBackCover ? 0.35 : 0.1;
+          mat.metalness = isBackCover ? 0.08 : 0;
           mat.needsUpdate = true;
         }
       });
@@ -319,6 +325,18 @@ const Page = ({
           rotationAngle = 0;
           foldRotationAngle = 0;
         }
+      } else if (isCover) {
+        // Hardcover distinction: cover is a stiff board, pivoting on the spine hinge (i=0)
+        // without flexible paper curling
+        if (i === 0) {
+          rotationAngle = targetRotation;
+        } else if (i <= 2) {
+          // Subtle spine hinge joint flex
+          rotationAngle = targetRotation * 0.03;
+        } else {
+          rotationAngle = 0;
+        }
+        foldRotationAngle = 0;
       }
 
       easing.dampAngle(target.rotation, "y", rotationAngle, easingFactor, delta);

@@ -13,6 +13,10 @@ const PRELOADED_PHOTOS = Array.from(
 );
 export const photosAtom = atom(PRELOADED_PHOTOS);
 
+// Cover textures for front and back hardcover
+export const COVER_PHOTO = `${import.meta.env.BASE_URL}images/book-cover.webp`;
+export const BACK_COVER_PHOTO = `${import.meta.env.BASE_URL}images/book-back-cover.webp`;
+
 // Build the sheets array from interior count + uploaded photos
 export function buildPages(interiorCount, photos) {
   const pages = [];
@@ -20,7 +24,7 @@ export function buildPages(interiorCount, photos) {
 
   // Front cover sheet
   pages.push({
-    front: null, // cover exterior — solid color
+    front: COVER_PHOTO, // distinct hardcover exterior
     back: photos[photoIdx++] || null,
   });
 
@@ -35,7 +39,7 @@ export function buildPages(interiorCount, photos) {
   // Back cover sheet
   pages.push({
     front: photos[photoIdx++] || null,
-    back: null, // cover exterior — solid color
+    back: BACK_COVER_PHOTO, // distinct hardcover exterior
   });
 
   return pages;
