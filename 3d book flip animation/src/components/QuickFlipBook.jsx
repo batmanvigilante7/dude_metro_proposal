@@ -41,14 +41,14 @@ export function QuickFlipBook({
 
       // Front face
       if (isFirst) {
-        result.push(sheet.front || "/textures/book-cover.jpg");
+        result.push(sheet.front || `${import.meta.env.BASE_URL}textures/book-cover.jpg`);
       } else {
         result.push(sheet.front || "");
       }
 
       // Back face
       if (isLast) {
-        result.push(sheet.back || "/textures/book-back.jpg");
+        result.push(sheet.back || `${import.meta.env.BASE_URL}textures/book-back.jpg`);
       } else {
         result.push(sheet.back || "");
       }

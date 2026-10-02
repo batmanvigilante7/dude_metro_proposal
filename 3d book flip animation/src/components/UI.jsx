@@ -9,7 +9,7 @@ export const pageCountAtom = atom(9); // 9 interior sheets → 9×2 + 2 = 20 pho
 // Pre-seed with the 20 downloaded images (page-01.webp … page-20.webp).
 const PRELOADED_PHOTOS = Array.from(
   { length: 20 },
-  (_, i) => `/images/page-${String(i + 1).padStart(2, "0")}.webp`
+  (_, i) => `${import.meta.env.BASE_URL}images/page-${String(i + 1).padStart(2, "0")}.webp`
 );
 export const photosAtom = atom(PRELOADED_PHOTOS);
 
@@ -50,7 +50,7 @@ function getBgmAudio() {
     if (window.__THE_METRO_PROPOSAL_AUDIO__) {
       bgmAudio = window.__THE_METRO_PROPOSAL_AUDIO__;
     } else {
-      bgmAudio = new Audio(encodeURI("/audios/The metro proposal (4).mp3"));
+      bgmAudio = new Audio(encodeURI(`${import.meta.env.BASE_URL}audios/The metro proposal (4).mp3`));
       bgmAudio.loop = true;
       bgmAudio.volume = 0.65;
       bgmAudio._userPaused = false;
@@ -157,7 +157,7 @@ export const UI = () => {
     }
     try {
       if (!flipSoundAudio) {
-        flipSoundAudio = new Audio("/audios/page-flip-01a.mp3");
+        flipSoundAudio = new Audio(`${import.meta.env.BASE_URL}audios/page-flip-01a.mp3`);
         flipSoundAudio.volume = 0.45;
       }
       flipSoundAudio.currentTime = 0;

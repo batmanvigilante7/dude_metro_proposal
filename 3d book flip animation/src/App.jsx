@@ -9,7 +9,7 @@ import DriftWall from "./components/DriftWall";
 // Original photos used inside the book (page-01.webp … page-20.webp)
 const ORIGINAL_BOOK_PHOTOS = Array.from(
   { length: 20 },
-  (_, i) => `/images/page-${String(i + 1).padStart(2, "0")}.webp`
+  (_, i) => `${import.meta.env.BASE_URL}images/page-${String(i + 1).padStart(2, "0")}.webp`
 );
 
 function App() {
