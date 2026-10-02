@@ -38,7 +38,7 @@ const PAGE_SEGMENTS = 30;
 const SEGMENT_WIDTH = PAGE_WIDTH / PAGE_SEGMENTS;
 
 // ── Geometry helper ────────────────────────────────────────
-function createBookGeometry(depth) {
+function createBookGeometry(depth, zOffset = 0) {
   const geometry = new BoxGeometry(
     PAGE_WIDTH,
     PAGE_HEIGHT,
@@ -46,27 +46,8 @@ function createBookGeometry(depth) {
     PAGE_SEGMENTS,
     2
   );
-  geometry.translate(PAGE_WIDTH / 2, 0, 0);
-
-  // ── Fix back-face UVs ──────────────────────────────────
-  // Three.js BoxGeometry creates the -Z face (material group 5 / "back")
-  // with the U coordinate running right-to-left so that the texture
-  // appears mirrored compared to the +Z face.  When the page physically
-  // flips (bone rotation around the spine), we are looking at the back
-  // face from the opposite side — the texture must remain spatially locked
-  // to the paper.  Flipping U → (1 - U) on the back face fixes the
-  // vertical-strip / slicing artifact and keeps the photo printed-on.
-  const uv = geometry.attributes.uv;
-  const normal = geometry.attributes.normal;
-  const nrm = new Vector3();
-  for (let i = 0; i < uv.count; i++) {
-    nrm.fromBufferAttribute(normal, i);
-    // Back face normals point in -Z
-    if (nrm.z < -0.5) {
-      uv.setX(i, 1 - uv.getX(i));
-    }
-  }
-  uv.needsUpdate = true;
+  // Center along X at spine, and align Z so interior face matches page surface
+  geometry.translate(PAGE_WIDTH / 2, 0, zOffset);
 
   // ── Skin weights ───────────────────────────────────────
   const position = geometry.attributes.position;
@@ -77,8 +58,12 @@ function createBookGeometry(depth) {
   for (let i = 0; i < position.count; i++) {
     vertex.fromBufferAttribute(position, i);
     const x = vertex.x;
-    const skinIndex = Math.max(0, Math.floor(x / SEGMENT_WIDTH));
+    const skinIndex = Math.min(
+      PAGE_SEGMENTS - 1,
+      Math.max(0, Math.floor(x / SEGMENT_WIDTH))
+    );
     let skinWeight = (x % SEGMENT_WIDTH) / SEGMENT_WIDTH;
+    if (x >= PAGE_WIDTH) skinWeight = 1.0;
     skinIndexes.push(skinIndex, skinIndex + 1, 0, 0);
     skinWeights.push(1 - skinWeight, skinWeight, 0, 0);
   }
@@ -94,8 +79,19 @@ function createBookGeometry(depth) {
   return geometry;
 }
 
-const pageGeometry = createBookGeometry(PAGE_DEPTH);
-const coverGeometry = createBookGeometry(COVER_DEPTH);
+// ── Geometries with shared interior deformation plane ─────
+// Interior surfaces (back face of front cover, and front face of back cover)
+// are locked to the exact same Z coordinates as the interior page paper surfaces.
+// Extra cover depth (+17mm) expands purely on the outside of the book.
+const pageGeometry = createBookGeometry(PAGE_DEPTH, 0);
+const frontCoverGeometry = createBookGeometry(
+  COVER_DEPTH,
+  (COVER_DEPTH - PAGE_DEPTH) / 2
+);
+const backCoverGeometry = createBookGeometry(
+  COVER_DEPTH,
+  -(COVER_DEPTH - PAGE_DEPTH) / 2
+);
 
 // ── Colours ────────────────────────────────────────────────
 const whiteColor = new Color("white");
@@ -166,7 +162,7 @@ const Page = ({
       // material[4] — front face (Strictly FrontSide to eliminate backface bleed)
       new MeshStandardMaterial({
         color: isFrontCover ? coverColor : whiteColor,
-        roughness: isCover ? 0.6 : 0.1,
+        roughness: isFrontCover ? 0.6 : 0.1,
         emissive: emissiveColor,
         emissiveIntensity: 0,
         side: FrontSide,
@@ -179,7 +175,7 @@ const Page = ({
       // material[5] — back face (Strictly FrontSide to eliminate backface bleed)
       new MeshStandardMaterial({
         color: isBackCover ? coverColor : whiteColor,
-        roughness: isCover ? 0.6 : 0.1,
+        roughness: isBackCover ? 0.6 : 0.1,
         emissive: emissiveColor,
         emissiveIntensity: 0,
         side: FrontSide,
@@ -191,7 +187,11 @@ const Page = ({
       }),
     ];
 
-    const geo = isCover ? coverGeometry : pageGeometry;
+    const geo = isFrontCover
+      ? frontCoverGeometry
+      : isBackCover
+      ? backCoverGeometry
+      : pageGeometry;
     const mesh = new SkinnedMesh(geo, materials);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
