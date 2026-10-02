@@ -325,18 +325,6 @@ const Page = ({
           rotationAngle = 0;
           foldRotationAngle = 0;
         }
-      } else if (isCover) {
-        // Hardcover distinction: cover is a stiff board, pivoting on the spine hinge (i=0)
-        // without flexible paper curling
-        if (i === 0) {
-          rotationAngle = targetRotation;
-        } else if (i <= 2) {
-          // Subtle spine hinge joint flex
-          rotationAngle = targetRotation * 0.03;
-        } else {
-          rotationAngle = 0;
-        }
-        foldRotationAngle = 0;
       }
 
       easing.dampAngle(target.rotation, "y", rotationAngle, easingFactor, delta);
