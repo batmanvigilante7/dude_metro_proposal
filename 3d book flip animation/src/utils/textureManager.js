@@ -1,4 +1,4 @@
-import { SRGBColorSpace, Texture, LinearFilter, LinearMipmapLinearFilter } from "three";
+import { SRGBColorSpace, Texture, LinearFilter, LinearMipmapLinearFilter, ClampToEdgeWrapping } from "three";
 
 // ── WebP Asynchronous Image Decoder ──────────────────────────────
 // Uses decoding="async" to decompress images off the main thread.
@@ -73,6 +73,8 @@ export async function getWebPTexture(url, pageWidth, pageHeight) {
     texture.generateMipmaps = true;
     texture.minFilter = LinearMipmapLinearFilter;
     texture.magFilter = LinearFilter;
+    texture.wrapS = ClampToEdgeWrapping;
+    texture.wrapT = ClampToEdgeWrapping;
     texture.needsUpdate = true;
 
     textureCache.set(url, texture);

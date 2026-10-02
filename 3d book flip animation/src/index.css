@@ -3,28 +3,39 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
 #root {
   width: 100vw;
   height: 100vh;
   height: 100dvh; /* dynamic viewport height for mobile browsers */
-  background: transparent;
+  background: radial-gradient(ellipse at center, #1a1a2e 0%, #0d0d0d 80%);
   overflow: hidden;
-  touch-action: none; /* prevent browser gestures from interfering with 3D controls */
+  touch-action: none; /* prevent default browser gestures from interfering with 3D controls */
   isolation: isolate; /* proper root stacking context */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 body {
   margin: 0;
   overflow: hidden;
-  background: transparent;
-  overscroll-behavior: none; /* prevent pull-to-refresh and overscroll bounce */
+  background: #0d0d0d;
+  overscroll-behavior: none; /* prevent pull-to-refresh and overscroll bounce on Android */
+  overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent; /* remove tap highlight on mobile */
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  touch-action: manipulation;
 }
 
 html {
   overflow: hidden;
-  background: transparent;
+  background: #0d0d0d;
 }
 
 .outline-text {
@@ -62,6 +73,32 @@ html {
   z-index: 10 !important;
 }
 
+/* ── Mobile Scrollbar Removal ── */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* ── Android Safe Areas ── */
+.safe-top {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+.safe-left {
+  padding-left: max(1rem, env(safe-area-inset-left));
+}
+.safe-right {
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
 /* ── Apple Glassmorphic Design System ── */
 .apple-glass {
   background: rgba(255, 255, 255, 0.12);
@@ -74,7 +111,7 @@ html {
 }
 
 .apple-glass-dark {
-  background: rgba(18, 18, 22, 0.55);
+  background: rgba(18, 18, 22, 0.65);
   backdrop-filter: blur(32px) saturate(190%);
   -webkit-backdrop-filter: blur(32px) saturate(190%);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -89,6 +126,7 @@ html {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-touch-callout: none;
 }
 
 .apple-glass-pill:active {
@@ -97,6 +135,7 @@ html {
 
 .apple-glass-interactive {
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-touch-callout: none;
 }
 
 .apple-glass-interactive:hover {
@@ -107,4 +146,3 @@ html {
 .apple-glass-interactive:active {
   transform: scale(0.96);
 }
-

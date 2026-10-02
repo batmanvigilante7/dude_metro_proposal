@@ -20,7 +20,6 @@ import { degToRad } from "three/src/math/MathUtils.js";
 import { currentPageAtom, pageCountAtom, photosAtom, buildPages } from "./UI";
 import {
   getWebPTexture,
-  pruneTextureCache,
   updateNativePrefetch,
 } from "../utils/textureManager";
 
@@ -49,6 +48,27 @@ function createBookGeometry(depth) {
   );
   geometry.translate(PAGE_WIDTH / 2, 0, 0);
 
+  // ── Fix back-face UVs ──────────────────────────────────
+  // Three.js BoxGeometry creates the -Z face (material group 5 / "back")
+  // with the U coordinate running right-to-left so that the texture
+  // appears mirrored compared to the +Z face.  When the page physically
+  // flips (bone rotation around the spine), we are looking at the back
+  // face from the opposite side — the texture must remain spatially locked
+  // to the paper.  Flipping U → (1 - U) on the back face fixes the
+  // vertical-strip / slicing artifact and keeps the photo printed-on.
+  const uv = geometry.attributes.uv;
+  const normal = geometry.attributes.normal;
+  const nrm = new Vector3();
+  for (let i = 0; i < uv.count; i++) {
+    nrm.fromBufferAttribute(normal, i);
+    // Back face normals point in -Z
+    if (nrm.z < -0.5) {
+      uv.setX(i, 1 - uv.getX(i));
+    }
+  }
+  uv.needsUpdate = true;
+
+  // ── Skin weights ───────────────────────────────────────
   const position = geometry.attributes.position;
   const vertex = new Vector3();
   const skinIndexes = [];
@@ -120,33 +140,11 @@ const Page = ({
   // State to track if this sheet is actively turning in the animation
   const [isTurning, setIsTurning] = useState(false);
 
-  // ── Determine Strict Page Isolation & Active Faces ─────────
-  // Enforce 'one page, one active image' model:
-  // - Left visible sheet is (page - 1): only its BACK face is active.
-  // - Right visible sheet is (page): only its FRONT face is active.
-  // - Turning sheet: both faces are active during the mid-turn flight.
-  // - Previous pages (number < page - 1) and deep unturned pages:
-  //   strictly unmount/clear textures (map = null) and hide mesh.
+  // ── Page position helpers (for render order only) ──────────
   const isLeftTop = number === page - 1;
   const isRightTop = number === page;
   const isLeftBuffer = number === page - 2;
   const isRightBuffer = number === page + 1;
-
-  // Active face requirements:
-  const isFrontActive =
-    isRightTop || (isTurning && (isLeftTop || isRightTop));
-  const isBackActive =
-    isLeftTop || (isTurning && (isLeftTop || isRightTop));
-
-  // Whole sheet visibility:
-  // Sheet 0 and last sheet are book exterior covers (kept visible for cover textures).
-  // Interior sheets are ONLY visible if they are top facing or actively turning / immediate buffer.
-  const isSheetVisible =
-    isFrontCover ||
-    isBackCover ||
-    isLeftTop ||
-    isRightTop ||
-    (isTurning && (isLeftBuffer || isRightBuffer));
 
   // Build the skinned mesh with hardware-accelerated backface culling & polygon offset
   const manualSkinnedMesh = useMemo(() => {
@@ -203,75 +201,61 @@ const Page = ({
     return mesh;
   }, [isCover, isFrontCover, isBackCover]);
 
-  // ── Apply / remove front photo texture with async WebP loading ──
+  // ── Apply / remove front photo texture ──────────────────────
   useEffect(() => {
     if (!skinnedMeshRef.current) return;
     const mat = skinnedMeshRef.current.material[4];
     let active = true;
 
-    if (isFrontActive && frontPhoto && !isFrontCover) {
+    if (frontPhoto && !isFrontCover) {
       getWebPTexture(frontPhoto, PAGE_WIDTH, PAGE_HEIGHT).then((tex) => {
         if (!active || !skinnedMeshRef.current) return;
         if (tex) {
           mat.map = tex;
           mat.color.set(whiteColor);
-          mat.visible = true;
           mat.needsUpdate = true;
         }
       });
     } else {
-      // Immediately clear texture and reset state once turned or inactive
       mat.map = null;
       mat.color.set(isFrontCover ? coverColor : whiteColor);
-      // For interior sheets, hide front material if facing stack to prevent internal bleed
-      mat.visible = isFrontCover || isFrontActive;
       mat.needsUpdate = true;
     }
 
     return () => {
       active = false;
     };
-  }, [frontPhoto, isFrontCover, isFrontActive]);
+  }, [frontPhoto, isFrontCover]);
 
-  // ── Apply / remove back photo texture with async WebP loading ──
+  // ── Apply / remove back photo texture ───────────────────────
   useEffect(() => {
     if (!skinnedMeshRef.current) return;
     const mat = skinnedMeshRef.current.material[5];
     let active = true;
 
-    if (isBackActive && backPhoto && !isBackCover) {
+    if (backPhoto && !isBackCover) {
       getWebPTexture(backPhoto, PAGE_WIDTH, PAGE_HEIGHT).then((tex) => {
         if (!active || !skinnedMeshRef.current) return;
         if (tex) {
           mat.map = tex;
           mat.color.set(whiteColor);
-          mat.visible = true;
           mat.needsUpdate = true;
         }
       });
     } else {
-      // Immediately clear texture and reset state once turned or inactive
       mat.map = null;
       mat.color.set(isBackCover ? coverColor : whiteColor);
-      // For interior sheets, hide back material if facing stack to prevent internal bleed
-      mat.visible = isBackCover || isBackActive;
       mat.needsUpdate = true;
     }
 
     return () => {
       active = false;
     };
-  }, [backPhoto, isBackCover, isBackActive]);
+  }, [backPhoto, isBackCover]);
 
-  // ── Per-frame animation & Stacking Context ────────────────
+  // ── Per-frame animation ────────────────────────────────────
   useFrame((_, delta) => {
     if (!skinnedMeshRef.current || !group.current) return;
-
-    // Strict Page Isolation: hide group completely if buried deep in stack
-    group.current.visible = isSheetVisible;
-    if (!isSheetVisible) {
-      return;
-    }
 
     // Dynamic Render Order to eliminate Z-fighting & ghosting
     let order = 1;
@@ -356,23 +340,28 @@ const Page = ({
   // ── Interaction ──────────────────────────────────────────
   const [, setPage] = useAtom(currentPageAtom);
   const [highlighted, setHighlighted] = useState(false);
-  useCursor(highlighted && isSheetVisible);
+  useCursor(highlighted);
 
   return (
     <group
       {...props}
       ref={group}
       onPointerEnter={(e) => {
-        if (!isSheetVisible) return;
-        e.stopPropagation();
-        setHighlighted(true);
+        if (e.pointerType === "mouse") {
+          e.stopPropagation();
+          setHighlighted(true);
+        }
       }}
       onPointerLeave={(e) => {
         e.stopPropagation();
         setHighlighted(false);
       }}
+      onPointerDown={(e) => {
+        if (e.pointerType !== "mouse") {
+          setHighlighted(false);
+        }
+      }}
       onClick={(e) => {
-        if (!isSheetVisible) return;
         e.stopPropagation();
         setPage(opened ? number : number + 1);
         setHighlighted(false);
@@ -399,19 +388,8 @@ export const Book = ({ ...props }) => {
     [pageCount, photos]
   );
 
-  // ── Cache Window & Native Prefetch Management ───────────
-  // Aggressively prunes textures outside the active ±2 window
-  // and natively prefetches adjacent WebP images via <link rel="prefetch">
+  // ── Native Prefetch for upcoming pages ───────────────────
   useEffect(() => {
-    const minWin = Math.max(0, Math.min(page, delayedPage) - 2);
-    const maxWin = Math.min(allPages.length - 1, Math.max(page, delayedPage) + 2);
-
-    const activeUrls = [];
-    for (let i = minWin; i <= maxWin; i++) {
-      if (allPages[i]?.front) activeUrls.push(allPages[i].front);
-      if (allPages[i]?.back) activeUrls.push(allPages[i].back);
-    }
-
     const prefetchMin = Math.max(0, page - 2);
     const prefetchMax = Math.min(allPages.length - 1, page + 4);
     const prefetchUrls = [];
@@ -419,10 +397,8 @@ export const Book = ({ ...props }) => {
       if (allPages[i]?.front) prefetchUrls.push(allPages[i].front);
       if (allPages[i]?.back) prefetchUrls.push(allPages[i].back);
     }
-
     updateNativePrefetch(prefetchUrls);
-    pruneTextureCache(activeUrls);
-  }, [page, delayedPage, allPages]);
+  }, [page, allPages]);
 
   // Page turning stepper
   useEffect(() => {
